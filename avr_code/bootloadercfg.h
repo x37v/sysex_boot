@@ -22,7 +22,6 @@
 #ifndef BOOTLOADERCFG_H
 #define BOOTLOADERCFG_H
 
-#include "midi.h"
 /*
 
 //turn on port b bit zero as input

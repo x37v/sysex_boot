@@ -30,7 +30,7 @@ main.hex : main.out
 	$(OBJCOPY) -R .eeprom -O ihex main.out main.hex 
 
 main.out : $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o main.out -Wl,-Map,main.map main.o midi.o bytequeue.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -o main.out -Wl,-Map,main.map $(OBJ)
 
 # you need to erase first before loading the program.
 load: main.hex
