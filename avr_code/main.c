@@ -38,8 +38,10 @@ void (*jump_to_app)(void) = 0x0;
 void exit_bootloader(void){
    cli();
    boot_rww_enable();
+/*
    GICR = _BV(IVCE);  // enable change of interrupt vectors
    GICR = 0; // move interrupts to application flash section
+*/
    jump_to_app();
 }
 
@@ -47,16 +49,40 @@ uint8_t midiInBuf[MIDIIN_BUF_SIZE];
 volatile byteQueue_t midiByteQueue;
 
 //our midi in interrupt, simply writes to our byte queue
-ISR(USART_RXC_vect) {
+ISR(USART_RX_vect) {
    uint8_t inByte;
-   inByte = UDR;
+   inByte = UDR0;
    bytequeue_enqueue((byteQueue_t *)&midiByteQueue,inByte);
+}
+
+void init(void) {
+#define BAUD 31250
+#include <util/setbaud.h>
+   UBRR0H = UBRRH_VALUE;
+   UBRR0L = UBRRL_VALUE;
+
+   // Enable transmitter
+   UCSR0B = 0;
+   UCSR0B |= _BV(TXEN0);
+   //Enable receiver
+   //RX Complete Interrupt Enable
+   UCSR0B |= _BV(RXEN0) | _BV(RXCIE0);
+
+   //Set frame format: Async, 8data, 1 stop bit, 1 start bit, no parity
+#ifdef URSEL
+   //needs to have URSEL set in order to write into this reg
+   UCSR0C = _BV(URSEL) | _BV(UCSZ01) | _BV(UCSZ00);
+#else
+   UCSR0C = _BV(UCSZ01) | _BV(UCSZ00);
+#endif
 }
 
 void midi_send_byte(uint8_t b) {
    // Wait for empty transmit buffer
-   while ( !(UCSRA & _BV(UDRE)) );
-   UDR = b;
+   //while ( !(UCSRA & _BV(UDRE)) );
+   //UDR0 = b;
+   while (!(UCSR0A & _BV(UDRE0)));
+   UDR0 = b;
 }
 
 void send_sysex_start(void) {
@@ -96,6 +122,7 @@ int main(void) {
 
    midiboot_sysex_t sysexMode = MIDIBOOT_INVALID;
 
+   /*
    //set up the bootloader conditions
    BOOTLOADER_INIT
 
@@ -104,18 +131,24 @@ int main(void) {
       exit_bootloader();
 
    INDICATE_BOOTLOADER_MODE
+   */
 
+   /*
    //move the interrupts into the bootloader portion
    GICR = _BV(IVCE);  // enable change of interrupt vectors
    GICR = _BV(IVSEL); // move interrupts to boot flash section
+   */
 
    //init queue and midi
    bytequeue_init((byteQueue_t *)&midiByteQueue, midiInBuf, MIDIIN_BUF_SIZE);
 
-   //TODO INIT
-   //midiInit(MIDI_CLOCK_RATE, true, true);
+   init();
    
    sei();
+
+   while(true) {
+      send_ack();
+   }
 
    //do main loop
    while(true){
