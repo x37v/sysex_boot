@@ -76,37 +76,45 @@ void send_ack(void){
    send_sysex_end();
 }
 
+//bytes
+#define PAGE_SIZE 128
+//includes address [2 bytes]
+//page size is 128, need 2 more bytes for page address
+//128 + 2 == 130..
+#define PAGE_AND_ADDRESS 130
+//once we pack it, it is 149 bytes
+#define PACKED_PAGE_AND_ADDRESS 149
+
 int main(void) {
    uint8_t i, size, curByte;
    bool inSysexMode = false;
    uint16_t inByteIndex = 0;
    uint16_t pageAddress = 0;
 
-   //page size is 128, need 2 more bytes for page address
-   //128 + 2 == 130..
-   //we actually don't need so much space but, whatever
-   uint8_t tmpUnpackedData[130];
-   //once we pack it, it is 149 bytes
-   uint8_t tmpPackedData[149];
+   uint8_t tmpUnpackedData[PAGE_AND_ADDRESS];
+   uint8_t tmpPackedData[PACKED_PAGE_AND_ADDRESS];
+
    midiboot_sysex_t sysexMode = MIDIBOOT_INVALID;
 
    //set up the bootloader conditions
    BOOTLOADER_INIT
 
-      //exit the bootloader if the bootloader condition isn't met
-      if(!BOOTLOADER_CONDITION)
-         exit_bootloader();
+   //exit the bootloader if the bootloader condition isn't met
+   if(!BOOTLOADER_CONDITION)
+      exit_bootloader();
 
    INDICATE_BOOTLOADER_MODE
 
-      //move the interrupts into the bootloader portion
-      GICR = _BV(IVCE);  // enable change of interrupt vectors
+   //move the interrupts into the bootloader portion
+   GICR = _BV(IVCE);  // enable change of interrupt vectors
    GICR = _BV(IVSEL); // move interrupts to boot flash section
 
    //init queue and midi
    bytequeue_init((byteQueue_t *)&midiByteQueue, midiInBuf, MIDIIN_BUF_SIZE);
+
    //TODO INIT
    //midiInit(MIDI_CLOCK_RATE, true, true);
+   
    sei();
 
    //do main loop
@@ -153,12 +161,9 @@ int main(void) {
                      cli();
 
                      //erase the page
-                     eeprom_busy_wait ();
-                     boot_page_erase (pageAddress);
-                     boot_spm_busy_wait ();
+                     boot_page_erase_safe(pageAddress);
                      //write the page
-                     boot_page_write (pageAddress);     // Store buffer in flash page.
-                     boot_spm_busy_wait();       // Wait until the memory is written.
+                     boot_page_write_safe(pageAddress);     // Store buffer in flash page.
 
                      sei();
 
@@ -169,7 +174,7 @@ int main(void) {
                      if(inByteIndex > (MIDIBOOT_SYSEX_ID_LEN + 1)) {
                         const uint16_t packedSize = inByteIndex - MIDIBOOT_SYSEX_ID_LEN - 1;
                         const uint16_t unpackedSize = sysex_bit_unpacked_length(packedSize);
-                        if(unpackedSize <= 64){
+                        if(unpackedSize <= PAGE_AND_ADDRESS){
                            //the first two bytes are the address
                            uint16_t bytesToWrite = unpackedSize - 2;
                            uint16_t writeStartAddr;
@@ -189,7 +194,7 @@ int main(void) {
                            uint16_t j;
                            for(j = 0; j < bytesToWrite; j+=2){
                               uint16_t w = (((uint16_t)pageData[j + 1]) << 8) + pageData[j];
-                              boot_page_fill (writeStartAddr + j, w);
+                              boot_page_fill_safe (writeStartAddr + j, w);
                            }
 
                            sei();
@@ -222,7 +227,7 @@ int main(void) {
                } else if (sysexMode == MIDIBOOT_FILLPAGE){
                   //the first MIDIBOOT_SYSEX_ID_LEN + 1 bytes have already been dealt with
                   uint16_t index = inByteIndex - MIDIBOOT_SYSEX_ID_LEN - 1;
-                  if(index < 43) {
+                  if(index < PACKED_PAGE_AND_ADDRESS) {
                      tmpPackedData[index] = curByte;
                   } else {
                      //XXX ERROR!!!

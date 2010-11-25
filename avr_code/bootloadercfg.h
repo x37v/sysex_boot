@@ -54,10 +54,13 @@
 	PORTB = 170;
 #endif
 
-//could be reduced [probably] to decrease ram size, but needs to be at least 43
-//long in current implementation
+//needs to be at least 
+//2 [sysex start/end] 
+//+ 9 [sysex headers] 
+//+ 2 [write address]
+//+ max size of data that you will be writing at a time
 #ifndef MIDIIN_BUF_SIZE
-#define MIDIIN_BUF_SIZE 64
+#define MIDIIN_BUF_SIZE 192
 #endif
 
 #endif

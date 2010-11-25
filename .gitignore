@@ -1,2 +1,5 @@
 *.o
 *.swp
+*.hex
+*.map
+*.out
