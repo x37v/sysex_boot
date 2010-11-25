@@ -28,7 +28,8 @@
 #include "bootloadercfg.h"
 #include "midibootcommon.h"
 #include "midi.h"
-#include "bytequeue.h"
+#include "bytequeue/bytequeue.h"
+#include "sysex_tools.h"
 
 void (*jump_to_app)(void) = 0x0;
 
@@ -47,7 +48,7 @@ volatile byteQueue_t midiByteQueue;
 ISR(USART_RXC_vect) {
 	uint8_t inByte;
 	inByte = UDR;
-	byteQueueEnqueue((byteQueue_t *)&midiByteQueue,inByte);
+	bytequeue_enqueue((byteQueue_t *)&midiByteQueue,inByte);
 }
 
 void midi_send_byte(uint8_t b) {
@@ -56,13 +57,21 @@ void midi_send_byte(uint8_t b) {
    UDR = b;
 }
 
+void send_sysex_start(void) {
+   uint8_t i = 0;
+   midi_send_byte(SYSEX_BEGIN);
+   for(i = 0; i < MIDIBOOT_SYSEX_ID_LEN; i++)
+      midi_send_byte(midiboot_sysex_id[i]);
+}
+
+void send_sysex_end(void) {
+	midi_send_byte(SYSEX_END);
+}
+
 //The ack is just our sysex id  in a sysex message, that is all
 void send_ack(void){
-	uint8_t i;
-	midi_send_byte(SYSEX_BEGIN);
-	for(i = 0; i < MIDIBOOT_SYSEX_ID_LEN; i++)
-		midi_send_byte(midiboot_sysex_id[i]);
-	midi_send_byte(SYSEX_END);
+   send_sysex_start();
+   send_sysex_end();
 }
 
 int main(void) {
@@ -93,17 +102,18 @@ int main(void) {
 	GICR = _BV(IVSEL); // move interrupts to boot flash section
 
 	//init queue and midi
-	byteQueueInit((byteQueue_t *)&midiByteQueue, midiInBuf, MIDIIN_BUF_SIZE);
-	midiInit(MIDI_CLOCK_RATE, true, true);
+	bytequeue_init((byteQueue_t *)&midiByteQueue, midiInBuf, MIDIIN_BUF_SIZE);
+   //TODO INIT
+	//midiInit(MIDI_CLOCK_RATE, true, true);
 	sei();
 
 	//do main loop
 	while(true){
 		//read data from the queue and deal with it
-		size = byteQueueLength((byteQueue_t *)&midiByteQueue);
+		size = bytequeue_length((byteQueue_t *)&midiByteQueue);
 		//deal with input data
 		for(i = 0; i < size; i++){
-			curByte = byteQueueGet((byteQueue_t *)&midiByteQueue, i);
+			curByte = bytequeue_get((byteQueue_t *)&midiByteQueue, i);
 
 			if(curByte == SYSEX_BEGIN){
 				inSysexMode = true;
@@ -119,22 +129,20 @@ int main(void) {
 						case MIDIBOOT_GETPAGESIZE:
 							//if we've been sent the correct size packet then send back our data
 							if(inByteIndex == (1 + MIDIBOOT_SYSEX_ID_LEN)){
-								midi_send_byte(SYSEX_BEGIN);
-								for(j = 0; j < MIDIBOOT_SYSEX_ID_LEN; j++)
-									midi_send_byte(midiboot_sysex_id[j]);
+                        send_sysex_start();
 								midi_send_byte(MIDIBOOT_GETPAGESIZE);
+
 								//pack the contents of SPM_PAGESIZE into tmpPackedData
 								//SPM_PAGESIZE is 2 bytes wide
 								tmpUnpackedData[0] = (uint8_t)(SPM_PAGESIZE >> 8);
 								tmpUnpackedData[1] = (uint8_t)(SPM_PAGESIZE & 0xFF);
-								//bit pack
-								tmpPackedData[0] = tmpUnpackedData[0] >> 1;
-								tmpPackedData[1] = ((tmpUnpackedData[0] << 6) & 0x7F) | (tmpUnpackedData[1] >> 2);
-								tmpPackedData[2] = (tmpUnpackedData[1] << 5) & 0x7F;
+
+                        sysex_bit_pack(tmpPackedData, tmpUnpackedData, 2);
+
 								midi_send_byte(tmpPackedData[0]);
 								midi_send_byte(tmpPackedData[1]);
 								midi_send_byte(tmpPackedData[2]);
-								midi_send_byte(SYSEX_END);
+                        send_sysex_end();
 							} 
 							break;
 							//actually write the page that has been filled up through MIDIBOOT_FILLPAGE
@@ -163,7 +171,8 @@ int main(void) {
 								uint16_t writeStartAddr;
 
 								//unpack our addr+data
-								midiBitUnpack(tmpUnpackedData, tmpPackedData, inByteIndex - MIDIBOOT_SYSEX_ID_LEN - 1);
+                        //TODO
+								//midiBitUnpack(tmpUnpackedData, tmpPackedData, inByteIndex - MIDIBOOT_SYSEX_ID_LEN - 1);
 
 								//grab the start address
 								writeStartAddr = tmpUnpackedData[0] << 8 | tmpUnpackedData[1];
@@ -223,7 +232,7 @@ int main(void) {
 		}
 
 		//advance the pointer
-		byteQueueRemove((byteQueue_t *)&midiByteQueue, size);
+		bytequeue_remove((byteQueue_t *)&midiByteQueue, size);
 	}
 
 	return 0;

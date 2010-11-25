@@ -7,23 +7,31 @@ UISP = uisp -dprog=stk500 -dserial=/dev/ttyUSB0 -dpart=$(PART)
 CC=avr-gcc
 OBJCOPY=avr-objcopy
 # optimize for size:
-CFLAGS= -mmcu=$(MCU) -I. -I../ -Wall -Wstrict-prototypes -Os -mcall-prologues
-DEFINES = -DMIDI_BASIC -DMIDI_BITPACKING
+CFLAGS= -mmcu=$(MCU) -I. -I../ -I../midi/ -Wall -Wstrict-prototypes -Os -mcall-prologues
 #LDFLAGS += --section-start=.text=$(BOOTLOADER_ADDRESS)
 LDFLAGS += -Ttext=$(BOOTLOADER_ADDRESS)
+
+SRC = main.c \
+		../midi/bytequeue/interrupt_setting.c \
+		../midi/bytequeue/bytequeue.c \
+		../midi/sysex_tools.c
+
+OBJ  = ${SRC:.c=.o}
+
 #-------------------
 all: main.hex
 #-------------------
+
+.c.o:
+	@echo CC $<
+	@$(CC) -c $(CFLAGS) -Os -o $*.o $<
+
 main.hex : main.out 
 	$(OBJCOPY) -R .eeprom -O ihex main.out main.hex 
-main.out : main.o midi.o bytequeue.o
+
+main.out : $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o main.out -Wl,-Map,main.map main.o midi.o bytequeue.o
-main.o : main.c 
-	$(CC) $(CFLAGS) -Os -c main.c $(DEFINES)
-midi.o : midi.c 
-	$(CC) $(CFLAGS) -Os -c midi.c $(DEFINES)
-bytequeue.o : bytequeue.c 
-	$(CC) $(CFLAGS) -Os -c bytequeue.c $(DEFINES)
+
 # you need to erase first before loading the program.
 load: main.hex
 	$(UISP) --erase

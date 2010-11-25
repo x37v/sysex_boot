@@ -55,13 +55,8 @@
 	PORTB = 170;
 #endif
 
-//target 12MHZ clock
-#ifndef MIDI_CLOCK_RATE
-#define MIDI_CLOCK_RATE MIDI_CLOCK_12MHZ_OSC
-#endif
-
 //could be reduced [probably] to decrease ram size, but needs to be at least 43
-//long in current implmentation
+//long in current implementation
 #ifndef MIDIIN_BUF_SIZE
 #define MIDIIN_BUF_SIZE 64
 #endif
